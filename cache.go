@@ -1,40 +1,81 @@
 package cache
 
-import "errors"
-
-type InMemoryCache interface {
-	Set(key string,value interface{})
-	Get(key string)
-	Delete(key string)
-}
+import (
+	"errors"
+	"sync"
+	"time"
+)
 
 type Cache struct {
-	key string
-	value interface{}
-	Items map[string]interface{}
+	sync.RWMutex
+	defaultExpiration time.Duration
+	cleanupInterval   time.Duration
+	items             map[string]Item
 }
+type Item struct {
+	value interface{}
+	Created    time.Time
+	Expiration int64
+}
+func (s *Cache) Set(key string,value interface{},duration time.Duration){
 
-func (s *Cache) Set(key string,value interface{}){
-	s.Items[key]=value
+	var expiration int64
+	if duration==0{
+		duration = s.defaultExpiration
+	}else if duration>0{
+		expiration = time.Now().Add(duration).UnixNano()
+	}
+
+	s.Lock()
+
+	defer s.Unlock()
+
+	s.items[key]=Item{
+		value: value,
+		Expiration: expiration,
+		Created: time.Now(),
+	}
+
 	return
 }
 func (g *Cache) Get(key string) interface{}{
-	 _, ok:=g.Items[key]
+	g.RLock()
+	defer g.RUnlock()
+
+	 item, ok:=g.items[key]
 	if !ok{
 		return nil
 	}
-	return g.Items[key]
+	if   item.Expiration > 0{
+
+		if time.Now().UnixNano() > item.Expiration{
+			return nil
+		}
+
+	}
+
+	return g.items[key]
 }
 func (d *Cache) Delete(key string)error{
-	_ , ok := d.Items[key]
+
+	d.Lock()
+	defer d.Unlock()
+
+	_, ok := d.items[key]
 	if !ok{
 		return errors.New("element not found")
 	}
-	delete(d.Items,key)
+
+	delete(d.items,key)
 	return nil
 }
-func (n *Cache) New() map[string]interface{} {
-	items:=make(map[string]interface{})
-	return items
+func New(defaultExpiration, cleanupInterval time.Duration) *Cache {
+	items:=make(map[string]Item)
+	cache:=Cache{
+		items: items,
+		defaultExpiration: defaultExpiration,
+		cleanupInterval: cleanupInterval,
+	}
+	return &cache
 }
 
