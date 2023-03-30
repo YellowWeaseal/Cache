@@ -1,4 +1,4 @@
-# Cache Установка 
-go get YellowWeaseal/Cache
+#  Установка 
+go get github.com/YellowWeaseal/Cache
 
 
